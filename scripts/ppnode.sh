@@ -107,7 +107,7 @@ before_show_menu() {
 }
 
 install() {
-    bash <(curl -Ls https://raw.githubusercontent.com/perfect-panel/PPanel-node/master/scripts/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/Siegfried-Tschen/PPanel-node/master/scripts/install.sh)
     if [[ $? == 0 ]]; then
         if [[ $# == 0 ]]; then
             start
@@ -123,7 +123,7 @@ update() {
     else
         version=$2
     fi
-    bash <(curl -Ls https://raw.githubusercontent.com/perfect-panel/PPanel-node/master/scripts/install.sh) $version
+    bash <(curl -Ls https://raw.githubusercontent.com/Siegfried-Tschen/PPanel-node/master/scripts/install.sh) $version
     if [[ $? == 0 ]]; then
         echo -e "${green}更新完成，已自动重启 PPanel-node，请使用 ppnode log 查看运行日志${plain}"
         exit
@@ -296,7 +296,7 @@ disable() {
 }
 
 show_log() {
-    if [[ x"${release}" == x"alpine" ]]; then   
+    if [[ x"${release}" == x"alpine" ]]; then
         echo -e "${red}alpine系统暂不支持日志查看${plain}\n" && exit 1
     else
         journalctl -u PPanel-node -e --no-pager -f
@@ -308,7 +308,7 @@ show_log() {
 
 
 update_shell() {
-    wget -O /usr/bin/ppnode -N --no-check-certificate https://raw.githubusercontent.com/perfect-panel/ppanel-node/master/scripts/ppnode.sh
+    wget -O /usr/bin/ppnode -N --no-check-certificate https://raw.githubusercontent.com/Siegfried-Tschen/ppanel-node/master/scripts/ppnode.sh
     if [[ $? != 0 ]]; then
         echo ""
         echo -e "${red}下载脚本失败，请检查本机能否连接 Github${plain}"
@@ -431,7 +431,7 @@ Log:
   # 日志等级，可选: debug, info, warn(warning), error
   Level: warn
   # 日志输出位置，可以是文件路径，留空时使用 "stdout"（标准输出）
-  Output: 
+  Output:
   # 访问日志路径，例如logs/access.log，写none时关闭访问日志
   Access: none
 
@@ -513,7 +513,7 @@ show_usage() {
 show_menu() {
     echo -e "
   ${green}PPanel-node 后端管理脚本，${plain}${red}不适用于docker${plain}
---- https://github.com/perfect-panel/PPanel-node ---
+--- https://github.com/Siegfried-Tschen/PPanel-node ---
   ${green}0.${plain} 修改配置
 ————————————————
   ${green}1.${plain} 安装 PPanel-node

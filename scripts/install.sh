@@ -113,16 +113,16 @@ install_base() {
     need_install_apt() {
         local packages=("$@")
         local missing=()
-        
+
         # 批量检查已安装的包
         local installed_list=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | sort)
-        
+
         for p in "${packages[@]}"; do
             if ! echo "$installed_list" | grep -q "^${p}$"; then
                 missing+=("$p")
             fi
         done
-        
+
         if [[ ${#missing[@]} -gt 0 ]]; then
             echo "安装缺失的包: ${missing[*]}"
             apt-get update -y >/dev/null 2>&1
@@ -133,16 +133,16 @@ install_base() {
     need_install_yum() {
         local packages=("$@")
         local missing=()
-        
+
         # 批量检查已安装的包
         local installed_list=$(rpm -qa --qf '%{NAME}\n' 2>/dev/null | sort)
-        
+
         for p in "${packages[@]}"; do
             if ! echo "$installed_list" | grep -q "^${p}$"; then
                 missing+=("$p")
             fi
         done
-        
+
         if [[ ${#missing[@]} -gt 0 ]]; then
             echo "安装缺失的包: ${missing[*]}"
             yum install -y "${missing[@]}" >/dev/null 2>&1
@@ -152,16 +152,16 @@ install_base() {
     need_install_apk() {
         local packages=("$@")
         local missing=()
-        
+
         # 批量检查已安装的包
         local installed_list=$(apk info 2>/dev/null | sort)
-        
+
         for p in "${packages[@]}"; do
             if ! echo "$installed_list" | grep -q "^${p}$"; then
                 missing+=("$p")
             fi
         done
-        
+
         if [[ ${#missing[@]} -gt 0 ]]; then
             echo "安装缺失的包: ${missing[*]}"
             apk add --no-cache "${missing[@]}" >/dev/null 2>&1
@@ -228,7 +228,7 @@ Log:
   # 日志等级，可选: debug, info, warn(warning), error
   Level: warn
   # 日志输出位置，可以是文件路径，留空时使用 "stdout"（标准输出）
-  Output: 
+  Output:
   # 访问日志路径，例如logs/access.log，写none时关闭访问日志
   Access: none
 
@@ -268,13 +268,13 @@ install_ppnode() {
     cd /usr/local/PPanel-node/
 
     if  [[ -z "$version_param" ]] ; then
-        last_version=$(curl -Ls "https://api.github.com/repos/perfect-panel/PPanel-node/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/Siegfried-Tschen/PPanel-node/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}检测 PPanel-node 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 PPanel-node 版本安装${plain}"
             exit 1
         fi
         echo -e "${green}检测到最新版本：${last_version}，开始安装...${plain}"
-        url="https://github.com/perfect-panel/PPanel-node/releases/download/${last_version}/ppanel-node-linux-${arch}.zip"
+        url="https://github.com/Siegfried-Tschen/PPanel-node/releases/download/${last_version}/ppanel-node-linux-${arch}.zip"
         curl -sL "$url" | pv -s 30M -W -N "下载进度" > /usr/local/PPanel-node/ppanel-node-linux.zip
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 PPanel-node 失败，请确保你的服务器能够下载 Github 的文件${plain}"
@@ -282,7 +282,7 @@ install_ppnode() {
         fi
     else
     last_version=$version_param
-        url="https://github.com/perfect-panel/PPanel-node/releases/download/${last_version}/ppanel-node-linux-${arch}.zip"
+        url="https://github.com/Siegfried-Tschen/PPanel-node/releases/download/${last_version}/ppanel-node-linux-${arch}.zip"
         curl -sL "$url" | pv -s 30M -W -N "下载进度" > /usr/local/PPanel-node/ppanel-node-linux.zip
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 PPanel-node $1 失败，请确保此版本存在${plain}"
@@ -376,7 +376,7 @@ EOF
     fi
 
 
-    curl -o /usr/bin/ppnode -Ls https://raw.githubusercontent.com/perfect-panel/ppanel-node/master/scripts/ppnode.sh
+    curl -o /usr/bin/ppnode -Ls https://raw.githubusercontent.com/Siegfried-Tschen/ppanel-node/master/scripts/ppnode.sh
     chmod +x /usr/bin/ppnode
 
     cd $cur_dir
