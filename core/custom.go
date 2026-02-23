@@ -471,16 +471,16 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 		foundDefault := false
 		log.WithField("searching_for", defaultOutboundTag).Debug("Searching for custom default outbound")
 
-		for i, outbound := range coreOutboundConfig {
+		for i := 0; i < len(coreOutboundConfig); i++ {
 			log.WithFields(log.Fields{
 				"index": i,
-				"tag":   outbound.Tag,
+				"tag":   coreOutboundConfig[i].Tag,
 			}).Debug("Checking outbound")
 
-			if outbound.Tag == defaultOutboundTag {
+			if coreOutboundConfig[i].Tag == defaultOutboundTag {
 				// Change the tag to "Default" so it becomes the default outbound
 				log.WithField("tag", defaultOutboundTag).Info("Found custom default outbound, setting as 'Default'")
-				outbound.Tag = "Default"
+				coreOutboundConfig[i].Tag = "Default"
 				foundDefault = true
 				break
 			}
