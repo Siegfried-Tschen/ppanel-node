@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 
@@ -54,12 +55,30 @@ func mergeOutboundList(serverList *[]panel.Outbound, localList []conf.OutboundCo
 	// Local config outbounds first (higher priority, can override server-side)
 	for _, item := range localList {
 		merged = append(merged, panel.Outbound{
-			Name:     item.Name,
-			Protocol: item.Protocol,
-			Address:  item.Address,
-			Port:     item.Port,
-			Password: item.Password,
-			Rules:    item.Rules,
+			Name:             item.Name,
+			Protocol:         item.Protocol,
+			Address:          item.Address,
+			Port:             item.Port,
+			User:             item.User,
+			Password:         item.Password,
+			Method:           item.Method,
+			Flow:             item.Flow,
+			Security:         item.Security,
+			Encryption:       item.Encryption,
+			SNI:              item.SNI,
+			Insecure:         item.Insecure,
+			Fingerprint:      item.Fingerprint,
+			RealityPublicKey: item.RealityPublicKey,
+			RealityShortId:   item.RealityShortId,
+			RealitySpiderX:   item.RealitySpiderX,
+			WgSecretKey:      item.WgSecretKey,
+			WgPublicKey:      item.WgPublicKey,
+			WgPreSharedKey:   item.WgPreSharedKey,
+			WgAddress:        item.WgAddress,
+			WgMTU:            item.WgMTU,
+			WgKeepAlive:      item.WgKeepAlive,
+			WgReserved:       item.WgReserved,
+			Rules:            item.Rules,
 		})
 		seen[item.Name] = true
 	}
@@ -103,7 +122,7 @@ func parseDomainRules(rules []string) []string {
 	return domains
 }
 
-func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []conf.OutboundConfig) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
+func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []conf.OutboundConfig, defaultOutboundTag string) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
 	var ip_strategy string
 	if serverconfig.Data.IPStrategy != "" {
 		switch serverconfig.Data.IPStrategy {
@@ -171,8 +190,26 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 	}
 
 	//default outbound
-	defaultoutbound, _ := buildDefaultOutbound()
-	coreOutboundConfig := append([]*core.OutboundHandlerConfig{}, defaultoutbound)
+	var defaultoutbound *core.OutboundHandlerConfig
+	var err error
+
+	// Check if user specified a custom default outbound
+	if defaultOutboundTag != "" {
+		// User wants to use a custom outbound as default
+		// We'll set it later after building all outbounds
+		defaultoutbound = nil
+	} else {
+		// Use standard freedom outbound as default
+		defaultoutbound, err = buildDefaultOutbound()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	coreOutboundConfig := []*core.OutboundHandlerConfig{}
+	if defaultoutbound != nil {
+		coreOutboundConfig = append(coreOutboundConfig, defaultoutbound)
+	}
 	block, _ := buildBlockOutbound()
 	coreOutboundConfig = append(coreOutboundConfig, block)
 	dns, _ := buildDnsOutbound()
@@ -214,46 +251,183 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 		streamSettings := &coreConf.StreamConfig{}
 		switch outbounditem.Protocol {
 		case "http":
-			//jsonsettings["user"] = outbounditem.User
-			jsonsettings["pass"] = outbounditem.Password
+			if outbounditem.User != "" {
+				jsonsettings["user"] = outbounditem.User
+			}
+			if outbounditem.Password != "" {
+				jsonsettings["pass"] = outbounditem.Password
+			}
 		case "socks":
-			//jsonsettings["user"] = outbounditem.User
-			jsonsettings["pass"] = outbounditem.Password
+			if outbounditem.User != "" {
+				jsonsettings["user"] = outbounditem.User
+			}
+			if outbounditem.Password != "" {
+				jsonsettings["pass"] = outbounditem.Password
+			}
 		case "shadowsocks":
-			//jsonsettings["method"] = outbounditem.Method
+			if outbounditem.Method != "" {
+				jsonsettings["method"] = outbounditem.Method
+			}
 			jsonsettings["password"] = outbounditem.Password
 			jsonsettings["uot"] = true
-			jsonsettings["UoTVersion"] = 2
+			jsonsettings["uotVersion"] = 2
 		case "trojan":
 			jsonsettings["password"] = outbounditem.Password
+			if outbounditem.Flow != "" {
+				jsonsettings["flow"] = outbounditem.Flow
+			}
 			proto := coreConf.TransportProtocol("tcp")
 			streamSettings.Network = &proto
-			streamSettings.Security = "tls"
-			streamSettings.TLSSettings = &coreConf.TLSConfig{
-				//ServerName: outbounditem.SNI,
-				//Insecure: outbounditem.Insecure,
+			if outbounditem.Security == "reality" {
+				streamSettings.Security = "reality"
+				realityConfig := &coreConf.REALITYConfig{}
+				if outbounditem.SNI != "" {
+					realityConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.RealityPublicKey != "" {
+					realityConfig.PublicKey = outbounditem.RealityPublicKey
+				}
+				if outbounditem.RealityShortId != "" {
+					realityConfig.ShortId = outbounditem.RealityShortId
+				}
+				if outbounditem.RealitySpiderX != "" {
+					realityConfig.SpiderX = outbounditem.RealitySpiderX
+				}
+				if outbounditem.Fingerprint != "" {
+					realityConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.REALITYSettings = realityConfig
+			} else {
+				streamSettings.Security = "tls"
+				tlsConfig := &coreConf.TLSConfig{}
+				if outbounditem.SNI != "" {
+					tlsConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.Insecure {
+					tlsConfig.Insecure = true
+				}
+				if outbounditem.Fingerprint != "" {
+					tlsConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.TLSSettings = tlsConfig
 			}
 		case "vmess":
-			jsonsettings["uuid"] = outbounditem.Password
+			jsonsettings["id"] = outbounditem.Password
+			if outbounditem.Security != "" && outbounditem.Security != "tls" && outbounditem.Security != "reality" {
+				jsonsettings["security"] = outbounditem.Security
+			}
 			proto := coreConf.TransportProtocol("tcp")
 			streamSettings.Network = &proto
-			/*if outbounditem.Security != "" && outbounditem.Security == "tls" {
+			if outbounditem.Security == "reality" {
+				streamSettings.Security = "reality"
+				realityConfig := &coreConf.REALITYConfig{}
+				if outbounditem.SNI != "" {
+					realityConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.RealityPublicKey != "" {
+					realityConfig.PublicKey = outbounditem.RealityPublicKey
+				}
+				if outbounditem.RealityShortId != "" {
+					realityConfig.ShortId = outbounditem.RealityShortId
+				}
+				if outbounditem.RealitySpiderX != "" {
+					realityConfig.SpiderX = outbounditem.RealitySpiderX
+				}
+				if outbounditem.Fingerprint != "" {
+					realityConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.REALITYSettings = realityConfig
+			} else if outbounditem.Security == "tls" {
 				streamSettings.Security = "tls"
-				streamSettings.TLSSettings = &coreConf.TLSConfig{
-					ServerName: outbounditem.SNI,
-					Insecure: outbounditem.Insecure,
-			}*/
+				tlsConfig := &coreConf.TLSConfig{}
+				if outbounditem.SNI != "" {
+					tlsConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.Insecure {
+					tlsConfig.Insecure = true
+				}
+				if outbounditem.Fingerprint != "" {
+					tlsConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.TLSSettings = tlsConfig
+			}
 		case "vless":
-			jsonsettings["uuid"] = outbounditem.Password
+			jsonsettings["id"] = outbounditem.Password
+			if outbounditem.Encryption != "" {
+				jsonsettings["encryption"] = outbounditem.Encryption
+			} else {
+				jsonsettings["encryption"] = "none"
+			}
+			if outbounditem.Flow != "" {
+				jsonsettings["flow"] = outbounditem.Flow
+			}
 			proto := coreConf.TransportProtocol("tcp")
 			streamSettings.Network = &proto
-			/*if outbounditem.Security != "" && outbounditem.Security == "tls" {
+			if outbounditem.Security == "reality" {
+				streamSettings.Security = "reality"
+				realityConfig := &coreConf.REALITYConfig{}
+				if outbounditem.SNI != "" {
+					realityConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.RealityPublicKey != "" {
+					realityConfig.PublicKey = outbounditem.RealityPublicKey
+				}
+				if outbounditem.RealityShortId != "" {
+					realityConfig.ShortId = outbounditem.RealityShortId
+				}
+				if outbounditem.RealitySpiderX != "" {
+					realityConfig.SpiderX = outbounditem.RealitySpiderX
+				}
+				if outbounditem.Fingerprint != "" {
+					realityConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.REALITYSettings = realityConfig
+			} else if outbounditem.Security == "tls" {
 				streamSettings.Security = "tls"
-				streamSettings.TLSSettings = &coreConf.TLSConfig{
-					ServerName: outbounditem.SNI,
-					Insecure: outbounditem.Insecure,
-			}*/
-		//case "wireguard":
+				tlsConfig := &coreConf.TLSConfig{}
+				if outbounditem.SNI != "" {
+					tlsConfig.ServerName = outbounditem.SNI
+				}
+				if outbounditem.Insecure {
+					tlsConfig.Insecure = true
+				}
+				if outbounditem.Fingerprint != "" {
+					tlsConfig.Fingerprint = outbounditem.Fingerprint
+				}
+				streamSettings.TLSSettings = tlsConfig
+			}
+		case "wireguard":
+			// WireGuard doesn't use address/port in jsonsettings
+			jsonsettings = map[string]interface{}{}
+			if outbounditem.WgSecretKey != "" {
+				jsonsettings["secretKey"] = outbounditem.WgSecretKey
+			}
+			if len(outbounditem.WgAddress) > 0 {
+				jsonsettings["address"] = outbounditem.WgAddress
+			}
+			if outbounditem.WgMTU > 0 {
+				jsonsettings["mtu"] = outbounditem.WgMTU
+			}
+			if len(outbounditem.WgReserved) > 0 {
+				// Convert []int to []byte
+				reserved := make([]byte, len(outbounditem.WgReserved))
+				for i, v := range outbounditem.WgReserved {
+					reserved[i] = byte(v)
+				}
+				jsonsettings["reserved"] = reserved
+			}
+			// Build peer configuration
+			peer := map[string]interface{}{
+				"publicKey": outbounditem.WgPublicKey,
+				"endpoint":  fmt.Sprintf("%s:%d", outbounditem.Address, outbounditem.Port),
+			}
+			if outbounditem.WgPreSharedKey != "" {
+				peer["preSharedKey"] = outbounditem.WgPreSharedKey
+			}
+			if outbounditem.WgKeepAlive > 0 {
+				peer["keepAlive"] = outbounditem.WgKeepAlive
+			}
+			jsonsettings["peers"] = []interface{}{peer}
 		default:
 			continue
 		}
@@ -287,6 +461,28 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 		}
 		coreOutboundConfig = append(coreOutboundConfig, custom_outbound)
 	}
+
+	// If user specified a custom default outbound, find it and set as "Default"
+	if defaultOutboundTag != "" {
+		foundDefault := false
+		for _, outbound := range coreOutboundConfig {
+			if outbound.Tag == defaultOutboundTag {
+				// Change the tag to "Default" so it becomes the default outbound
+				outbound.Tag = "Default"
+				foundDefault = true
+				break
+			}
+		}
+
+		// If specified default outbound not found, create a freedom outbound as fallback
+		if !foundDefault {
+			fallbackDefault, err := buildDefaultOutbound()
+			if err == nil {
+				coreOutboundConfig = append([]*core.OutboundHandlerConfig{fallbackDefault}, coreOutboundConfig...)
+			}
+		}
+	}
+
 	//build config
 	DnsConfig, err := coreDnsConfig.Build()
 	if err != nil {
