@@ -466,9 +466,10 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 		coreOutboundConfig = append(coreOutboundConfig, custom_outbound)
 	}
 
-	// If user specified a custom default outbound, find it and set as "Default"
+	// If user specified a custom default outbound, find it and move to first position
 	if defaultOutboundTag != "" {
 		foundDefault := false
+		foundIndex := -1
 		log.WithField("searching_for", defaultOutboundTag).Debug("Searching for custom default outbound")
 
 		for i := 0; i < len(coreOutboundConfig); i++ {
@@ -478,22 +479,66 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 			}).Debug("Checking outbound")
 
 			if coreOutboundConfig[i].Tag == defaultOutboundTag {
-				// Change the tag to "Default" so it becomes the default outbound
-				log.WithField("tag", defaultOutboundTag).Info("Found custom default outbound, setting as 'Default'")
-				coreOutboundConfig[i].Tag = "Default"
 				foundDefault = true
+				foundIndex = i
+				log.WithField("tag", defaultOutboundTag).Info("Found custom default outbound")
 				break
 			}
 		}
 
-		// If specified default outbound not found, create a freedom outbound as fallback
-		if !foundDefault {
+		if foundDefault && foundIndex >= 0 {
+			// Extract the default outbound
+			defaultOutbound := coreOutboundConfig[foundIndex]
+
+			// Update routing rules that reference this outbound
+			for i := 0; i < len(coreRouterConfig.RuleList); i++ {
+				var rule map[string]interface{}
+				if err := json.Unmarshal(coreRouterConfig.RuleList[i], &rule); err == nil {
+					if outboundTag, ok := rule["outboundTag"].(string); ok && outboundTag == defaultOutboundTag {
+						rule["outboundTag"] = "Default"
+						if updatedRule, err := json.Marshal(rule); err == nil {
+							coreRouterConfig.RuleList[i] = updatedRule
+							log.WithFields(log.Fields{
+								"old_tag": defaultOutboundTag,
+								"new_tag": "Default",
+							}).Debug("Updated routing rule outboundTag")
+						}
+					}
+				}
+			}
+
+			// Change its tag to "Default"
+			defaultOutbound.Tag = "Default"
+
+			// Remove it from current position
+			coreOutboundConfig = append(coreOutboundConfig[:foundIndex], coreOutboundConfig[foundIndex+1:]...)
+
+			// Insert it at the beginning
+			coreOutboundConfig = append([]*core.OutboundHandlerConfig{defaultOutbound}, coreOutboundConfig...)
+
+			log.WithFields(log.Fields{
+				"original_tag":   defaultOutboundTag,
+				"new_tag":        "Default",
+				"original_index": foundIndex,
+				"new_index":      0,
+			}).Info("Successfully moved custom default outbound to first position")
+		} else {
+			// If specified default outbound not found, create a freedom outbound as fallback
 			log.WithField("tag", defaultOutboundTag).Warn("Specified default outbound not found, using freedom as fallback")
 			fallbackDefault, err := buildDefaultOutbound()
 			if err == nil {
 				coreOutboundConfig = append([]*core.OutboundHandlerConfig{fallbackDefault}, coreOutboundConfig...)
 			}
 		}
+	}
+
+	// Log all final outbound tags
+	log.Info("Final outbound configuration:")
+	for i, outbound := range coreOutboundConfig {
+		log.WithFields(log.Fields{
+			"index": i,
+			"tag":   outbound.Tag,
+		}).Info("Outbound")
 	}
 
 	//build config
