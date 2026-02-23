@@ -8,6 +8,7 @@ import (
 
 	"github.com/perfect-panel/ppanel-node/api/panel"
 	"github.com/perfect-panel/ppanel-node/conf"
+	log "github.com/sirupsen/logrus"
 	"github.com/xtls/xray-core/app/dns"
 	"github.com/xtls/xray-core/app/router"
 	xnet "github.com/xtls/xray-core/common/net"
@@ -123,6 +124,9 @@ func parseDomainRules(rules []string) []string {
 }
 
 func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []conf.OutboundConfig, defaultOutboundTag string) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
+	if defaultOutboundTag != "" {
+		log.WithField("tag", defaultOutboundTag).Info("User specified custom default outbound")
+	}
 	var ip_strategy string
 	if serverconfig.Data.IPStrategy != "" {
 		switch serverconfig.Data.IPStrategy {
@@ -465,9 +469,17 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 	// If user specified a custom default outbound, find it and set as "Default"
 	if defaultOutboundTag != "" {
 		foundDefault := false
-		for _, outbound := range coreOutboundConfig {
+		log.WithField("searching_for", defaultOutboundTag).Debug("Searching for custom default outbound")
+
+		for i, outbound := range coreOutboundConfig {
+			log.WithFields(log.Fields{
+				"index": i,
+				"tag":   outbound.Tag,
+			}).Debug("Checking outbound")
+
 			if outbound.Tag == defaultOutboundTag {
 				// Change the tag to "Default" so it becomes the default outbound
+				log.WithField("tag", defaultOutboundTag).Info("Found custom default outbound, setting as 'Default'")
 				outbound.Tag = "Default"
 				foundDefault = true
 				break
@@ -476,6 +488,7 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 
 		// If specified default outbound not found, create a freedom outbound as fallback
 		if !foundDefault {
+			log.WithField("tag", defaultOutboundTag).Warn("Specified default outbound not found, using freedom as fallback")
 			fallbackDefault, err := buildDefaultOutbound()
 			if err == nil {
 				coreOutboundConfig = append([]*core.OutboundHandlerConfig{fallbackDefault}, coreOutboundConfig...)
