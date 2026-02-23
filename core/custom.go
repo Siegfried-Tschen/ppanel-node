@@ -78,7 +78,7 @@ func mergeOutboundList(serverList *[]panel.Outbound, localList []conf.OutboundCo
 	return merged
 }
 
-// parseDomainRules converts rule strings (keyword:xxx, suffix:xxx, regex:xxx, or plain) to Xray domain format.
+// parseDomainRules converts rule strings (keyword:xxx, suffix:xxx, regex:xxx, geosite:xxx, geoip:xxx, or plain) to Xray domain format.
 func parseDomainRules(rules []string) []string {
 	var domains []string
 	for _, item := range rules {
@@ -91,6 +91,8 @@ func parseDomainRules(rules []string) []string {
 				domains = append(domains, "domain:"+data[1])
 			case "regex":
 				domains = append(domains, "regexp:"+data[1])
+			case "geosite", "geoip":
+				domains = append(domains, item)
 			default:
 				domains = append(domains, data[1])
 			}
