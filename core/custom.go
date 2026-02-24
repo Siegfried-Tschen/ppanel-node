@@ -98,28 +98,55 @@ func mergeOutboundList(serverList *[]panel.Outbound, localList []conf.OutboundCo
 	return merged
 }
 
-// parseDomainRules converts rule strings (keyword:xxx, suffix:xxx, regex:xxx, geosite:xxx, geoip:xxx, or plain) to Xray domain format.
-func parseDomainRules(rules []string) []string {
-	var domains []string
+// parseRules separates rules into domain rules and inbound rules
+func parseRules(rules []string) (domains []string, inboundTags []string) {
 	for _, item := range rules {
+		// Skip empty rules
+		if strings.TrimSpace(item) == "" {
+			continue
+		}
+
 		data := strings.Split(item, ":")
-		if len(data) == 2 {
+		if len(data) >= 2 {
 			switch data[0] {
+			case "inbound":
+				// Inbound tag rule: inbound:tag_name
+				tag := strings.Join(data[1:], ":")
+				// Skip empty inbound tags
+				if strings.TrimSpace(tag) != "" {
+					inboundTags = append(inboundTags, tag)
+				} else {
+					log.WithField("rule", item).Warn("Skipping empty inbound tag")
+				}
 			case "keyword":
-				domains = append(domains, data[1])
+				if data[1] != "" {
+					domains = append(domains, data[1])
+				}
 			case "suffix":
-				domains = append(domains, "domain:"+data[1])
+				if data[1] != "" {
+					domains = append(domains, "domain:"+data[1])
+				}
 			case "regex":
-				domains = append(domains, "regexp:"+data[1])
+				if data[1] != "" {
+					domains = append(domains, "regexp:"+data[1])
+				}
 			case "geosite", "geoip":
 				domains = append(domains, item)
 			default:
-				domains = append(domains, data[1])
+				if data[1] != "" {
+					domains = append(domains, data[1])
+				}
 			}
 		} else {
 			domains = append(domains, "full:"+item)
 		}
 	}
+	return domains, inboundTags
+}
+
+// parseDomainRules converts rule strings to Xray domain format (for backward compatibility)
+func parseDomainRules(rules []string) []string {
+	domains, _ := parseRules(rules)
 	return domains
 }
 
@@ -421,9 +448,23 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 				jsonsettings["reserved"] = reserved
 			}
 			// Build peer configuration
+			// For IPv6 addresses, wrap in brackets
+			endpoint := outbounditem.Address
+			if strings.Contains(endpoint, ":") && !strings.HasPrefix(endpoint, "[") {
+				// This is an IPv6 address, wrap it in brackets
+				endpoint = fmt.Sprintf("[%s]:%d", endpoint, outbounditem.Port)
+			} else {
+				endpoint = fmt.Sprintf("%s:%d", endpoint, outbounditem.Port)
+			}
+			log.WithFields(log.Fields{
+				"name":     outbounditem.Name,
+				"address":  outbounditem.Address,
+				"port":     outbounditem.Port,
+				"endpoint": endpoint,
+			}).Debug("Building WireGuard peer configuration")
 			peer := map[string]interface{}{
 				"publicKey": outbounditem.WgPublicKey,
-				"endpoint":  fmt.Sprintf("%s:%d", outbounditem.Address, outbounditem.Port),
+				"endpoint":  endpoint,
 			}
 			if outbounditem.WgPreSharedKey != "" {
 				peer["preSharedKey"] = outbounditem.WgPreSharedKey
@@ -432,6 +473,14 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 				peer["keepAlive"] = outbounditem.WgKeepAlive
 			}
 			jsonsettings["peers"] = []interface{}{peer}
+
+			// Log complete WireGuard settings
+			if settingsJSON, err := json.MarshalIndent(jsonsettings, "", "  "); err == nil {
+				log.WithFields(log.Fields{
+					"name":     outbounditem.Name,
+					"settings": string(settingsJSON),
+				}).Debug("WireGuard outbound settings")
+			}
 		default:
 			continue
 		}
@@ -445,19 +494,41 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 			StreamSetting: streamSettings,
 		}
 		// Outbound rules
-		domains := parseDomainRules(outbounditem.Rules)
+		domains, inboundTags := parseRules(outbounditem.Rules)
 		custom_outbound, err := outbound.Build()
 		if err != nil {
 			continue
 		}
-		if len(domains) > 0 {
+
+		// Create routing rules
+		if len(domains) > 0 || len(inboundTags) > 0 {
 			rule := map[string]interface{}{
-				"domain":      domains,
 				"outboundTag": custom_outbound.Tag,
 			}
+
+			// Add domain rules
+			if len(domains) > 0 {
+				rule["domain"] = domains
+			}
+
+			// Add inbound tag rules
+			if len(inboundTags) > 0 {
+				rule["inboundTag"] = inboundTags
+			}
+
 			rawRule, err := json.Marshal(rule)
 			if err == nil {
 				coreRouterConfig.RuleList = append(coreRouterConfig.RuleList, rawRule)
+				log.WithFields(log.Fields{
+					"outbound":    custom_outbound.Tag,
+					"domains":     len(domains),
+					"inboundTags": len(inboundTags),
+				}).Debug("Created routing rule")
+			} else {
+				log.WithFields(log.Fields{
+					"outbound": custom_outbound.Tag,
+					"error":    err,
+				}).Error("Failed to marshal routing rule")
 			}
 		}
 		if hasOutboundWithTag(coreOutboundConfig, custom_outbound.Tag) {
@@ -502,8 +573,18 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 								"old_tag": defaultOutboundTag,
 								"new_tag": "Default",
 							}).Debug("Updated routing rule outboundTag")
+						} else {
+							log.WithFields(log.Fields{
+								"old_tag": defaultOutboundTag,
+								"error":   err,
+							}).Error("Failed to marshal updated routing rule")
 						}
 					}
+				} else {
+					log.WithFields(log.Fields{
+						"index": i,
+						"error": err,
+					}).Warn("Failed to unmarshal routing rule for update")
 				}
 			}
 
