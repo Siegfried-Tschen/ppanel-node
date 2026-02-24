@@ -421,9 +421,23 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 				jsonsettings["reserved"] = reserved
 			}
 			// Build peer configuration
+			// For IPv6 addresses, wrap in brackets
+			endpoint := outbounditem.Address
+			if strings.Contains(endpoint, ":") && !strings.HasPrefix(endpoint, "[") {
+				// This is an IPv6 address, wrap it in brackets
+				endpoint = fmt.Sprintf("[%s]:%d", endpoint, outbounditem.Port)
+			} else {
+				endpoint = fmt.Sprintf("%s:%d", endpoint, outbounditem.Port)
+			}
+			log.WithFields(log.Fields{
+				"name":     outbounditem.Name,
+				"address":  outbounditem.Address,
+				"port":     outbounditem.Port,
+				"endpoint": endpoint,
+			}).Debug("Building WireGuard peer configuration")
 			peer := map[string]interface{}{
 				"publicKey": outbounditem.WgPublicKey,
-				"endpoint":  fmt.Sprintf("%s:%d", outbounditem.Address, outbounditem.Port),
+				"endpoint":  endpoint,
 			}
 			if outbounditem.WgPreSharedKey != "" {
 				peer["preSharedKey"] = outbounditem.WgPreSharedKey
@@ -432,6 +446,14 @@ func GetCustomConfig(serverconfig *panel.ServerConfigResponse, localOutbound []c
 				peer["keepAlive"] = outbounditem.WgKeepAlive
 			}
 			jsonsettings["peers"] = []interface{}{peer}
+
+			// Log complete WireGuard settings
+			if settingsJSON, err := json.MarshalIndent(jsonsettings, "", "  "); err == nil {
+				log.WithFields(log.Fields{
+					"name":     outbounditem.Name,
+					"settings": string(settingsJSON),
+				}).Debug("WireGuard outbound settings")
+			}
 		default:
 			continue
 		}
