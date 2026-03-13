@@ -161,10 +161,13 @@ func buildVLess(nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig)
 			return fmt.Errorf("vless decryption method %s is not support", nodeInfo.Protocol.Encryption)
 		}
 	}
-	s, err := json.Marshal(&coreConf.VLessInboundConfig{
+	config := &coreConf.VLessInboundConfig{
 		Decryption: decryption,
-		Flow:       nodeInfo.Protocol.Flow,
-	})
+	}
+	if nodeInfo.Protocol.Flow != "" && nodeInfo.Protocol.Flow != "none" {
+		config.Flow = nodeInfo.Protocol.Flow
+	}
+	s, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("marshal vless config error: %s", err)
 	}
