@@ -163,6 +163,7 @@ func buildVLess(nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig)
 	}
 	s, err := json.Marshal(&coreConf.VLessInboundConfig{
 		Decryption: decryption,
+		Flow:       nodeInfo.Protocol.Flow,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal vless config error: %s", err)
